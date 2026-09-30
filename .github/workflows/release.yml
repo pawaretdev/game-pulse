@@ -35,6 +35,10 @@ jobs:
           # Fonts are embedded in the exe: the OFL requires shipping their licenses too
           New-Item -ItemType Directory "$name/fonts" | Out-Null
           Copy-Item assets/fonts/*-OFL.txt "$name/fonts"
+          # The READMEs link to docs/ (guides and screenshots), so ship it too
+          Copy-Item docs "$name/docs" -Recurse
+          New-Item -ItemType Directory "$name/assets" | Out-Null
+          Copy-Item assets/icon-256.png "$name/assets"
           Compress-Archive -Path $name -DestinationPath "$name.zip"
           $hash = (Get-FileHash "$name.zip" -Algorithm SHA256).Hash.ToLower()
           "$hash  $name.zip" | Out-File "$name.zip.sha256" -Encoding ascii

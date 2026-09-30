@@ -31,7 +31,7 @@ Main files in `src/`:
 
 Never move monitoring logic into eframe's `update()`. eframe stops calling `update()` while the window is hidden to the tray, which once silently stopped all monitoring. Tray events are handled in their own event handlers for the same reason.
 
-`DEVELOPMENT.md` is the developer guide. Its "Open gates" section lists what is still unverified. User docs are `README.md` (English) and `README.th.md` (Thai); keep both in sync.
+`DEVELOPMENT.md` is the developer guide. Its "Open gates" section lists what is still unverified. User docs are the short `README.md` / `README.th.md` plus the guides in `docs/` (`guide`, `phone-setup`, `how-it-works`, each with a `.th.md` twin). Keep English and Thai in sync, and put details in `docs/`, not the README.
 
 ## Detection rules to preserve
 
@@ -54,7 +54,7 @@ Never move monitoring logic into eframe's `update()`. eframe stops calling `upda
 
 ## UI, local data and privacy
 
-- Code comments, UI text, alert messages and `DEVELOPMENT.md` are all in English. Only `README.th.md` is in Thai.
+- Code comments, UI text, alert messages and `DEVELOPMENT.md` are all in English. Only `README.th.md` and `docs/*.th.md` are in Thai.
 - Closing the window only hides it to the tray. The app exits from tray → Exit.
 - All colors go through the theme palette (`p()`). Status colors (green, red, amber) must keep their meaning in every theme.
 - Fonts are embedded from `assets/fonts/` (Inter, JetBrains Mono, Fredoka) with their OFL license files alongside. egui has no font weights, so use `semibold()` / `RichText::semibold()` for bold text; `.strong()` only changes the color.
@@ -91,4 +91,4 @@ Pushing a `v*` tag runs `.github/workflows/release.yml`. The tag must match the 
 
 ## How to hand work back
 
-Change only what was asked and keep the user's existing work. Update both READMEs when usage or user-facing settings change. Summarise what changed, what was checked, and what is still limited. If asked to commit, use Conventional Commits (`docs:`, `fix:`, `feat:`), stage only files from this task, and never list an AI agent as author or add a `Co-Authored-By` line.
+Change only what was asked and keep the user's existing work. Update the English and Thai user docs when usage or user-facing settings change. Summarise what changed, what was checked, and what is still limited. If asked to commit, use Conventional Commits (`docs:`, `fix:`, `feat:`), stage only files from this task, and never list an AI agent as author or add a `Co-Authored-By` line.

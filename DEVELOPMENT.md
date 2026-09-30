@@ -97,7 +97,7 @@ The CI workflow (`.github/workflows/ci.yml`) runs build/tests on Windows but has
 ## Publishing a release
 
 `.github/workflows/release.yml` runs when a tag starting with `v` is pushed: it runs tests, builds on a GitHub runner (a clean machine with no `config.json`),
-then creates a GitHub Release with `gamepulse-vX.Y.Z-windows-x64.zip` (containing `gamepulse.exe`, `gamepulse-cli.exe`, `README.md`, `README.th.md`, `LICENSE` and the bundled font licenses in `fonts/`) and a `.sha256` file.
+then creates a GitHub Release with `gamepulse-vX.Y.Z-windows-x64.zip` (containing `gamepulse.exe`, `gamepulse-cli.exe`, `README.md`, `README.th.md`, `LICENSE`, the user docs in `docs/`, the README logo and the bundled font licenses in `fonts/`) and a `.sha256` file.
 
 1. Bump `version` in `Cargo.toml`, then run `cargo build` once so `Cargo.lock` updates
 2. Commit and push to `main`
