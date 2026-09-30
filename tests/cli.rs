@@ -2,7 +2,7 @@ use std::process::Command;
 
 #[test]
 fn help_does_not_observe_or_capture() {
-    let output = Command::new(env!("CARGO_BIN_EXE_rooc-monitor-probe"))
+    let output = Command::new(env!("CARGO_BIN_EXE_gamepulse-cli"))
         .arg("--help")
         .output()
         .unwrap();
@@ -19,7 +19,7 @@ fn invalid_arguments_do_not_start_observation() {
         vec!["--capture-preview"],
         vec!["--capture-preview", ""],
     ] {
-        let output = Command::new(env!("CARGO_BIN_EXE_rooc-monitor-probe"))
+        let output = Command::new(env!("CARGO_BIN_EXE_gamepulse-cli"))
             .args(args)
             .output()
             .unwrap();
@@ -32,7 +32,7 @@ fn invalid_arguments_do_not_start_observation() {
 #[test]
 fn unsupported_platform_never_reports_online() {
     for arg in ["--once", "--capture"] {
-        let output = Command::new(env!("CARGO_BIN_EXE_rooc-monitor-probe"))
+        let output = Command::new(env!("CARGO_BIN_EXE_gamepulse-cli"))
             .arg(arg)
             .output()
             .unwrap();

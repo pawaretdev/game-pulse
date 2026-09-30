@@ -1,10 +1,10 @@
-name: Rust API probe
+name: CI
 
 on:
   push:
-    paths: ['rust/**', '.github/workflows/rust-probe.yml']
+    paths: ['src/**', 'tests/**', 'assets/**', 'build.rs', 'Cargo.*', '.cargo/**', '.github/workflows/ci.yml']
   pull_request:
-    paths: ['rust/**', '.github/workflows/rust-probe.yml']
+    paths: ['src/**', 'tests/**', 'assets/**', 'build.rs', 'Cargo.*', '.cargo/**', '.github/workflows/ci.yml']
   workflow_dispatch:
 
 permissions:
@@ -13,9 +13,6 @@ permissions:
 jobs:
   check:
     runs-on: windows-2025
-    defaults:
-      run:
-        working-directory: rust
     steps:
       - uses: actions/checkout@v4
       - name: Install Rust components
@@ -24,4 +21,4 @@ jobs:
       - run: cargo clippy --locked --all-targets -- -D warnings
       - run: cargo test --locked
       - run: cargo build --locked --release
-      # Hosted CI proves build/tests only; it cannot validate rooc.exe or capture.
+      # Hosted CI proves build/tests only; it cannot validate game detection or capture.

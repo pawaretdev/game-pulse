@@ -1,66 +1,94 @@
-# แนวทางสำหรับ agent ที่ทำงานใน repo นี้
+# Agent guidelines for this repository
 
-## เป้าหมายของโปรเจกต์
+## Project goal
 
-ROOC Monitor ใช้เฝ้า Ragnarok Origin Classic (`rooc.exe`) บน Windows เพราะเกมอาจหลุดช่วงดึกขณะผู้ใช้หลับ เป้าหมายหลักคือจับการหลุดและแจ้งเข้ามือถือได้อย่างเชื่อถือได้ พร้อมข้อมูลให้ตรวจย้อนหลัง ความถูกต้องของการตรวจจับและการส่งเตือนสำคัญกว่าฟีเจอร์ตกแต่ง
+GamePulse (formerly ROOC Monitor) is a Windows-only tray app that watches game clients, because a game can drop in the middle of the night while the player is asleep. The core job is to detect disconnects and alert the player's phone reliably (ntfy / Discord webhook / Telegram), and to leave enough evidence to review afterwards. Detection and alert correctness come before cosmetic features.
 
-เครื่องมือเป็น monitor ไม่ใช่บอตเล่นเกม อย่าเพิ่มการล็อกอินใหม่อัตโนมัติ ควบคุมตัวละคร อ่าน/แก้ memory ของเกม หรือยุ่งกับ anti-cheat เว้นแต่ผู้ใช้จะขอเปลี่ยนขอบเขตงานอย่างชัดเจน
+Supported games are data in `GAMES` (`src/lib.rs`). Currently only Ragnarok Origin Classic (`rooc.exe`) is listed. Never hard-code game names, exe names, server IPs or ports outside `GAMES`. Profile `id`s are persisted (in config and cover filenames), so never rename them.
 
-## โครงสร้างและ runtime
+This is a monitor, not a bot. Never add auto-login, character control, reading or writing game memory, or anything that touches anti-cheat, unless the user explicitly changes the scope.
 
-- `README.md`: วิธีใช้งาน เหตุผลของการตรวจจับ และข้อควรระวังของ launcher อ่านก่อนแก้พฤติกรรม
-- `ROOC Monitor.vbs`: launcher หลัก เปิด WPF ผ่าน `powershell.exe -STA` โดยซ่อน console
-- `ROOC-Monitor-WPF.ps1`: หน้าจอหลัก การตั้งค่า system tray การตรวจจับ และการส่งเตือน รวมถึง burst และโหมดซ้อมหลุด
-- `ROOC-Monitor-GUI.ps1`: หน้าจอ WinForms สำรอง
-- `Watch-RoocOnline.ps1`: CLI สำหรับเฝ้าต่อเนื่อง เช็กครั้งเดียว และทดสอบเตือน
-- `Start-Watch.example.cmd`, `Test-Alert.example.cmd`: template สำหรับคำสั่งใช้งานในเครื่อง
-- `config.json`: ค่าท้องถิ่นที่ WPF และ WinForms ใช้ร่วมกัน ส่วน CLI รับ argument
+## Layout and runtime
 
-รองรับ Windows PowerShell 5.1 และ Windows APIs ที่ใช้อยู่ อย่าเพิ่ม syntax ที่ต้องใช้ PowerShell 7 โดยไม่ตั้งใจ โปรเจกต์นี้ไม่มีขั้นตอน build ผ่าน Node.js และยังไม่มีชุดทดสอบอัตโนมัติใน repo
+A single Rust crate (`gamepulse`) at the repository root. It builds two executables:
 
-ตรรกะบางส่วนซ้ำอยู่ในสคริปต์ทั้งสาม แต่ฟีเจอร์และค่าเริ่มต้นไม่ได้เท่ากันทั้งหมด เมื่อแก้การตรวจจับหรือการส่งเตือน ให้ตรวจทุก implementation ที่เกี่ยวข้องและระบุผลกระทบ ไม่ต้องปรับโครงสร้างทั้งโปรเจกต์เพื่อแก้ปัญหาเฉพาะจุด
+- `gamepulse.exe`: egui/eframe GUI plus system tray. It has no console window and rejects command-line arguments.
+- `gamepulse-cli.exe`: diagnostic probe (`--once` / `--capture` / `--capture-preview DIR`) that checks every game in `GAMES`. It must stay a console app so stdout and exit codes work.
 
-## หลักการตรวจจับที่ต้องรักษา
+The old PowerShell/WPF implementation (and the `rust/` subfolder) was removed on 2026-09-30. Don't reintroduce either.
 
-- ตรวจ TCP สถานะ `Established` ของแต่ละ PID ของ `rooc.exe` กรอง loopback/ที่อยู่ที่ไม่ใช่ปลายทางเกม และพอร์ตเว็บ `80`, `443`, `8080` ตามตรรกะปัจจุบัน
-- อย่าผูกกับ IP หรือพอร์ต game server ตายตัว และอย่าใช้เพียงการมี process หรือชื่อหน้าต่างเป็นหลักฐานว่าออนไลน์
-- Socket เป็นสัญญาณการเชื่อมต่อ ไม่ได้พิสูจน์ว่าตัวละครยังทำงานหรือเล่นได้ปกติ อย่าอ้างความสามารถเกินข้อมูลที่ตรวจได้
-- รักษา `GraceChecks` สำหรับการขาด socket ต่อเนื่อง เพื่อลดการเตือนผิดช่วงสลับแมพ/ตัวละคร ค่าเริ่มต้นตรวจทุก 30 วินาทีและรอ 3 รอบ ไม่ใช่การรับประกันเวลาตรวจพบแบบเป๊ะ ๆ
-- แยกสถานะต่อ PID รองรับหลาย client รวมถึง process ที่หายไปและ client ที่เปิดใหม่ ไม่ให้การกลับมาออนไลน์ของตัวหนึ่งล้างสถานะของอีกตัว
-- ตรวจอินเทอร์เน็ตแยกจาก socket เพราะ socket อาจค้างอยู่หลังเน็ตหลุด อย่ารายงานว่าออนไลน์อย่างมั่นใจจาก socket ค้าง
-- การเปลี่ยน `CreationTime` ใช้สังเกต session ใหม่/การกลับมาเชื่อมต่อ รักษาความแตกต่างระหว่างหลุดค้างกับกลับมาได้เอง
+Main files in `src/`:
 
-## การเตือนและความทนทาน
+- `lib.rs`: platform-neutral types (`Snapshot`, `Client`, `Identity`, `Config`, `GameProfile`/`GAMES`) and socket filtering.
+- `windows/mod.rs`: one Tool Help process pass plus one `GetExtendedTcpTable` read (IPv4 and IPv6) per check, covering all games.
+- `windows/capture.rs`, `preview.rs`: GDI capture of the whole virtual desktop (all monitors in one image, never a specific window).
+- `notify.rs`: ntfy / Discord / Telegram senders (blocking `reqwest`) and the local alarm sound.
+- `gui.rs`: window, tray, themes, fonts, Settings, and `Engine`, which owns the alert state machine and the 5-round drill. `Engine` runs on its own worker thread, ticked every 250 ms.
+- `gui/hub.rs`: game library (cards with an Alerts on/off switch) and the per-game page.
+- `gui/onboarding.rs`: first-run setup and the Guide window.
+- `main.rs`: GUI entry point (single-instance mutex). `cli.rs`: CLI entry point.
+- `build.rs`: generates the Windows resource script (icon plus VERSIONINFO taken from the `Cargo.toml` version).
 
-- การแจ้งเข้ามือถือเป็นเส้นทางหลัก เสียงที่คอมปิดโดยค่าเริ่มต้น รักษาการตรวจว่ามีช่องทางเตือนก่อนเริ่มเฝ้า รวมถึงโหมดที่ผู้ใช้เลือกอย่างชัดเจน เช่น CLI `-LogOnly` หรือ `-Sound`
-- รักษา `RepeatAlertMin`, `MaxRepeats` และการ reset สถานะเมื่อกลับมาออนไลน์ ทดสอบทั้งการเตือนครั้งแรก เตือนซ้ำ ถึงขีดจำกัด และการหลุดครั้งใหม่
-- ใน WPF รักษา `BurstCount`, `BurstGapSec` และการยกเลิกโหมดซ้อม อย่าเพิ่มลูปส่งถี่โดยไม่มีขีดจำกัด
-- Heartbeat ช่วยให้ผู้ใช้รู้ว่า monitor ยังทำงาน ค่าเริ่มต้น GUI คือ 4 ชั่วโมง ส่วน CLI คือปิด เว้นแต่ส่ง argument เช่นใน template
-- การหลุดจริงต้องแยกจาก recovery, heartbeat และข้อมูลทั่วไป ทั้งระดับความเร่งด่วนและ Discord ping อย่าทำให้ข่าวปกติปลุกผู้ใช้โดยไม่จำเป็น
-- งานเครือข่ายต้องมี timeout และไม่ทำให้ UI ค้าง รักษาการเก็บผลลัพธ์/ข้อผิดพลาดของงาน async และการคืน resource
-- ช่องทางหนึ่งส่งไม่สำเร็จไม่ควรขัดขวางช่องทางอื่น ห้ามอ้างว่าส่งถึงมือถือเพียงเพราะเริ่ม request แล้ว
-- เมื่อเน็ตเครื่องดับ ช่องทางเตือนผ่านอินเทอร์เน็ตอาจส่งไม่ได้ ให้แสดง/บันทึกข้อผิดพลาดตามจริง ไม่รับประกันว่าจะปลุกได้ทุกกรณี
+Never move monitoring logic into eframe's `update()`. eframe stops calling `update()` while the window is hidden to the tray, which once silently stopped all monitoring. Tray events are handled in their own event handlers for the same reason.
 
-## UI, launcher และข้อมูลท้องถิ่น
+`DEVELOPMENT.md` is the developer guide. Its "Open gates" section lists what is still unverified. User docs are `README.md` (English) and `README.th.md` (Thai); keep both in sync.
 
-- UI และข้อความแจ้งเตือนใช้ภาษาอังกฤษ เอกสารและ comment อธิบายเป็นภาษาไทยได้ตามรูปแบบเดิม
-- ปิดหน้าต่างขณะเฝ้าต้องย่อลง system tray การออกจากโปรแกรมต้องยังทำได้จาก tray
-- คง `sh.Run(..., 0, False)` ใน VBS เพื่อซ่อน console และเรียก `Force-Show` ก่อน `ShowDialog` ของหน้าต่าง WPF ที่เพิ่มใหม่ตามรูปแบบเดิม
-- เก็บ `.vbs` เป็น ASCII ไม่มี BOM รักษา encoding ของไฟล์ PowerShell โดยเฉพาะข้อความไทยที่ต้องอ่านได้ด้วย Windows PowerShell 5.1
-- เพิ่ม config โดยมีค่าเริ่มต้นและรองรับไฟล์เก่าที่ไม่มี key ใหม่ อย่าเขียนทับค่าท้องถิ่นของผู้ใช้เพื่อทดสอบ
-- ห้าม commit `config.json`, `*.log`, `Start-Watch.cmd`, `Test-Alert.cmd` ซึ่งอยู่ใน `.gitignore` ใช้ placeholder ในตัวอย่าง ห้ามนำ topic จริง, webhook URL หรือ Telegram token ไปใส่โค้ด เอกสาร หรือ output
+## Detection rules to preserve
 
-## การตรวจสอบงาน
+- A client is online only if it has an `Established` TCP connection that is not loopback or unspecified and is not to one of the game's `ignored_ports` (ROOC: `80`, `443`, `8080`).
+- Never treat a running process or a window title as proof of being online. When the game drops, the process and window title stay the same; only the socket disappears.
+- A socket shows a connection, not that the character is playing normally. Don't claim more than the data shows.
+- Client identity is PID plus process creation time, re-checked after reading the TCP table to catch PID reuse. Track state per client, so one client recovering never clears another client's state.
+- A new socket for the same client means it dropped and reconnected by itself. Report it as information; don't wake the player.
+- Check the internet separately (TCP connect to `1.1.1.1:443`), because sockets can linger after the connection is lost. When offline, send a separate alert and don't trust the remaining sockets.
+- `Snapshot::exit_code()`: any error returns `3`. Never report an error as online or as "no process".
 
-เลือกตรวจตามส่วนที่เปลี่ยน งานเอกสารอย่างเดียวตรวจความตรงกับโค้ดและ `git diff --check` ก็เพียงพอ งาน PowerShell ให้ parse syntax โดยไม่ execute สคริปต์ก่อน แล้วตรวจพฤติกรรมบน Windows PowerShell 5.1 ตามความเกี่ยวข้อง:
+## Alerts and robustness
 
-- CLI `powershell.exe -NoProfile -File .\Watch-RoocOnline.ps1 -Once`: exit code `0` เมื่อมี client และออนไลน์ครบ, `1` เมื่อมี client ขาด socket, `2` เมื่อไม่พบ process โหมดนี้ไม่ได้ยืนยันการส่งเตือนหรือการตรวจอินเทอร์เน็ตของลูปเฝ้า
-- ตรวจหลาย client, socket หายสั้นกว่า grace, หลุดต่อเนื่อง, process ปิด, เน็ตหลุด/กลับมา, session ใหม่ และการเตือนซ้ำหลัง recovery ใช้ข้อมูลจำลองเมื่อเหมาะสม ไม่ปิดเกมหรือเน็ตของผู้ใช้เพื่อทดสอบเอง
-- ถ้าแก้ UI/launcher ตรวจเปิดผ่าน VBS, เปิด Settings, ย่อลง tray, คืนหน้าต่าง และออกจริง รวมถึงการตอบสนองขณะส่งเตือน
-- การทดสอบ `-TestAlert` หรือโหมดซ้อมส่งข้อความจริง ใช้ช่องทางทดสอบที่ผู้ใช้ระบุและอนุญาต ตรวจการรับบนมือถือก่อนสรุปว่าเตือนถึงจริง
+- Keep the state machine: `GraceChecks` consecutive misses trigger the first alert, then repeats every `RepeatAlertMin` up to `MaxRepeats`, and everything resets on recovery. Each urgent alert is a burst of `BurstCount` notifications `BurstGapSec` apart. Every loop that sends must have a limit.
+- The heartbeat title must be exactly "Still watching" (it is the only alert that can carry the optional screenshot). Other alert titles are prefixed with the game name, using an ASCII `:` because ntfy strips non-ASCII titles.
+- Real disconnects must stay distinct from recoveries, heartbeats and informational messages, both in urgency and in Discord `@here` (sent only when `DiscordHere` is on).
+- Every game is always observed so its card shows real status, but only games in `WatchedGames` send alerts.
+- Monitoring must refuse to start when no notification channel is configured.
+- Network work needs timeouts and runs on spawned threads that report back over channels, so the UI never freezes. One failing channel must not block the others. Never claim an alert reached the phone just because a request was started.
 
-หากทำงานบน macOS/Linux หรือไม่มี Windows/เกม/มือถือให้ตรวจ ให้บอกข้อจำกัดและรายการที่ยังไม่ได้ทดสอบชัดเจน ห้ามสรุปว่า runtime ผ่านจากการอ่านโค้ดหรือ parse syntax เท่านั้น
+## UI, local data and privacy
 
-## รูปแบบการส่งงาน
+- Code comments, UI text, alert messages and `DEVELOPMENT.md` are all in English. Only `README.th.md` is in Thai.
+- Closing the window only hides it to the tray. The app exits from tray → Exit.
+- All colors go through the theme palette (`p()`). Status colors (green, red, amber) must keep their meaning in every theme.
+- Fonts are embedded from `assets/fonts/` (Inter, JetBrains Mono, Fredoka) with their OFL license files alongside. egui has no font weights, so use `semibold()` / `RichText::semibold()` for bold text; `.strong()` only changes the color.
+- New config keys need a default in `Config::default()` (`#[serde(default)]`) so old config files keep loading. Don't overwrite the user's local config to test something.
+- Never commit `config.json`, `*.log`, `screenshots/`, `evidence/` or `covers/` (all gitignored). Never put a real ntfy topic, webhook URL or Telegram token in code, docs or output.
+- Screenshots cover every monitor and can contain private data. Capture stays off by default and is never uploaded or saved without the user opting in.
+- Never bundle game cover art (it belongs to the publishers). Covers are user-supplied files in `covers/`.
 
-แก้เฉพาะขอบเขตที่ขอ รักษางานเดิมของผู้ใช้ อัปเดต README และ template เมื่อวิธีใช้หรือค่าที่ผู้ใช้ต้องตั้งเปลี่ยน สรุปว่าแก้อะไร ตรวจอะไรแล้ว และยังมีข้อจำกัดใด หากผู้ใช้ขอ commit ให้ใช้ Conventional Commits เช่น `docs:`, `fix:`, `feat:` และเลือกเฉพาะไฟล์ของงานนี้
+## Verifying changes
+
+The same commands as CI (run from the repository root):
+
+```powershell
+cargo fmt --check
+cargo clippy --locked --all-targets -- -D warnings
+cargo test --locked
+cargo build --locked --release
+.\target\release\gamepulse-cli.exe --once   # JSON snapshot; exit 0/1/2/3
+```
+
+A running `gamepulse.exe` locks the release exe, so the release build fails with "Access is denied" until the app is exited from the tray.
+
+On macOS/Linux, `cargo test --locked` still works (Windows code is `#[cfg(windows)]`-gated), and `cargo check --locked --target x86_64-pc-windows-msvc --all-targets` type-checks the Windows code.
+
+- For docs-only changes, checking them against the code and running `git diff --check` is enough.
+- Don't close the game or cut the network to test a disconnect without the user's agreement. Hosted CI cannot verify `rooc.exe` detection or screen capture.
+- Test buttons and the drill send real notifications. Use only channels the user has approved, and wait for the user to confirm the phone received them before saying alerts work.
+
+If you have no Windows machine, game or phone to test with, say so and list what was not tested. Never conclude that runtime behaviour works just because the code reads correctly or builds.
+
+## Releases
+
+Pushing a `v*` tag runs `.github/workflows/release.yml`. The tag must match the `Cargo.toml` version. It builds on a clean runner and publishes a zip containing both exes, both READMEs, `LICENSE` and the font licenses. See "Publishing a release" in `DEVELOPMENT.md`. Don't build locally and upload by hand.
+
+## How to hand work back
+
+Change only what was asked and keep the user's existing work. Update both READMEs when usage or user-facing settings change. Summarise what changed, what was checked, and what is still limited. If asked to commit, use Conventional Commits (`docs:`, `fix:`, `feat:`), stage only files from this task, and never list an AI agent as author or add a `Co-Authored-By` line.

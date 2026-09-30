@@ -1,7 +1,6 @@
 pub mod capture;
-mod readback;
 
-use crate::{is_game_connection, Client, Connection, Identity, Snapshot, Window};
+use crate::{is_game_connection, Client, Connection, GameProfile, Identity, Snapshot, Window};
 use std::{
     collections::BTreeMap,
     mem::{offset_of, size_of},
@@ -40,7 +39,7 @@ impl Drop for OwnedHandle {
     }
 }
 
-pub(super) fn identity(pid: u32) -> Result<Identity, String> {
+pub(super) fn identity(pid: u32, exe: &str) -> Result<Identity, String> {
     unsafe {
         let process = OwnedHandle(
             OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid)
@@ -60,9 +59,9 @@ pub(super) fn identity(pid: u32) -> Result<Identity, String> {
             .rsplit('\\')
             .next()
             .unwrap_or("")
-            .eq_ignore_ascii_case("rooc.exe")
+            .eq_ignore_ascii_case(exe)
         {
-            return Err(format!("PID {pid}: no longer rooc.exe"));
+            return Err(format!("PID {pid}: no longer {exe}"));
         }
         let (mut created, mut exited, mut kernel, mut user) = (
             FILETIME::default(),
@@ -80,7 +79,10 @@ pub(super) fn identity(pid: u32) -> Result<Identity, String> {
     }
 }
 
-fn processes() -> Result<Vec<Identity>, String> {
+/// Processes of every game in `games` from a single Tool Help snapshot
+fn processes(
+    games: &'static [GameProfile],
+) -> Result<Vec<(Identity, &'static GameProfile)>, String> {
     unsafe {
         let snapshot = OwnedHandle(
             CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0)
@@ -105,9 +107,10 @@ fn processes() -> Result<Vec<Identity>, String> {
                 .iter()
                 .position(|c| *c == 0)
                 .unwrap_or(entry.szExeFile.len());
-            if String::from_utf16_lossy(&entry.szExeFile[..end]).eq_ignore_ascii_case("rooc.exe") {
+            let name = String::from_utf16_lossy(&entry.szExeFile[..end]);
+            if let Some(game) = games.iter().find(|g| name.eq_ignore_ascii_case(g.exe)) {
                 // An inaccessible or disappearing client invalidates the observation.
-                clients.push(identity(entry.th32ProcessID)?);
+                clients.push((identity(entry.th32ProcessID, game.exe)?, game));
             }
             result = Process32NextW(snapshot.0, &mut entry);
         }
@@ -185,7 +188,10 @@ fn rows<T: Copy>(data: &[u64], bytes: usize, offset: usize) -> Result<Vec<T>, St
     }
 }
 
-fn connections() -> Result<BTreeMap<u32, Vec<Connection>>, String> {
+/// Read the TCP table once, keeping only rows for PIDs in `owners`, filtered by that game's ports
+fn connections(
+    owners: &BTreeMap<u32, &GameProfile>,
+) -> Result<BTreeMap<u32, Vec<Connection>>, String> {
     let mut result: BTreeMap<u32, Vec<Connection>> = BTreeMap::new();
     let (data, bytes) = tcp_table(AF_INET.0 as u32)?;
     for row in
@@ -193,7 +199,15 @@ fn connections() -> Result<BTreeMap<u32, Vec<Connection>>, String> {
     {
         let remote = Ipv4Addr::from(row.dwRemoteAddr.to_ne_bytes());
         let port = u16::from_be(row.dwRemotePort as u16);
-        if is_game_connection(row.dwState == 5, IpAddr::V4(remote), port) {
+        let Some(game) = owners.get(&row.dwOwningPid) else {
+            continue;
+        };
+        if is_game_connection(
+            row.dwState == 5,
+            IpAddr::V4(remote),
+            port,
+            game.ignored_ports,
+        ) {
             result.entry(row.dwOwningPid).or_default().push(Connection {
                 local: format!(
                     "{}:{}",
@@ -213,7 +227,15 @@ fn connections() -> Result<BTreeMap<u32, Vec<Connection>>, String> {
     )? {
         let remote = Ipv6Addr::from(row.ucRemoteAddr);
         let port = u16::from_be(row.dwRemotePort as u16);
-        if is_game_connection(row.dwState == 5, IpAddr::V6(remote), port) {
+        let Some(game) = owners.get(&row.dwOwningPid) else {
+            continue;
+        };
+        if is_game_connection(
+            row.dwState == 5,
+            IpAddr::V6(remote),
+            port,
+            game.ignored_ports,
+        ) {
             result.entry(row.dwOwningPid).or_default().push(Connection {
                 local: SocketAddrV6::new(
                     Ipv6Addr::from(row.ucLocalAddr),
@@ -258,9 +280,10 @@ unsafe extern "system" fn enum_window(hwnd: HWND, param: LPARAM) -> BOOL {
     BOOL(1)
 }
 
-pub fn snapshot() -> Snapshot {
+/// Check every game in `games` at once: cost barely depends on the number of games, since processes and the TCP table are walked once
+pub fn snapshot(games: &'static [GameProfile]) -> Snapshot {
     let mut result = Snapshot {
-        schema_version: 1,
+        schema_version: 2,
         sampled_unix_ms: SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default()
@@ -268,28 +291,36 @@ pub fn snapshot() -> Snapshot {
         clients: vec![],
         errors: vec![],
     };
-    let clients = match processes() {
+    let clients = match processes(games) {
         Ok(p) => p,
         Err(e) => {
             result.errors.push(e);
             return result;
         }
     };
-    let mut sockets = match connections() {
+    let owners: BTreeMap<u32, &GameProfile> =
+        clients.iter().map(|(c, game)| (c.pid, *game)).collect();
+    let mut sockets = match connections(&owners) {
         Ok(c) => c,
         Err(e) => {
             result.errors.push(e);
             return result;
         }
     };
-    let mut windows: BTreeMap<u32, Vec<Window>> = clients.iter().map(|c| (c.pid, vec![])).collect();
+    let mut windows: BTreeMap<u32, Vec<Window>> =
+        clients.iter().map(|(c, _)| (c.pid, vec![])).collect();
     if let Err(e) =
         unsafe { EnumWindows(Some(enum_window), LPARAM(&mut windows as *mut _ as isize)) }
     {
-        result.errors.push(format!("Window enumeration: {e}"));
+        // EnumWindows can return FALSE with GetLastError == ERROR_SUCCESS when
+        // the current session has no enumerable desktop. The windows crate
+        // represents that as Err(S_OK), which is not an observation failure.
+        if e.code().is_err() {
+            result.errors.push(format!("Window enumeration: {e}"));
+        }
     }
-    for client in clients {
-        match identity(client.pid) {
+    for (client, game) in clients {
+        match identity(client.pid, game.exe) {
             Ok(current) if current == client => {
                 let connections = sockets.remove(&client.pid).unwrap_or_default();
                 if connections.iter().any(|c| c.created_filetime <= 0) {
@@ -298,6 +329,7 @@ pub fn snapshot() -> Snapshot {
                         .push(format!("PID {}: session timestamp unavailable", client.pid));
                 }
                 result.clients.push(Client {
+                    game: game.id,
                     identity: client,
                     connections,
                     windows: windows.remove(&client.pid).unwrap_or_default(),

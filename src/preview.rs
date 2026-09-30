@@ -1,5 +1,7 @@
 //! Bounded, top-down 32-bit BMP for explicitly requested diagnostic previews.
-pub const MAX_PIXEL_BYTES: usize = 64 * 1024 * 1024;
+// Four 4K monitors require roughly 127 MiB in BGRA form. Keep the allocation
+// bounded while leaving enough room for common multi-monitor desktops.
+pub const MAX_PIXEL_BYTES: usize = 256 * 1024 * 1024;
 
 pub fn bmp(width: u32, height: u32, bgra: &[u8]) -> Result<Vec<u8>, String> {
     let size = (width as usize)

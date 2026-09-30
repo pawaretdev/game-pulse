@@ -1,231 +1,219 @@
-# ROOC Online Monitor
+<p align="center"><img src="assets/icon-256.png" width="128" alt="GamePulse icon"></p>
 
-เฝ้าดูว่า client ของ Ragnarok Origin Classic ยังต่อกับ game server อยู่ไหม แล้วเตือนเข้ามือถือเมื่อหลุด
+<h1 align="center">GamePulse</h1>
 
-เสียงที่เครื่องคอมปิดไว้เป็นค่าเริ่มต้น เพราะนอนคนละห้องยังไงก็ไม่ได้ยิน
-สคริปต์จะไม่ยอมรันถ้ายังไม่ได้ตั้งช่องทางเตือนเข้ามือถือ (จะได้ไม่เผลอรันทิ้งไว้ทั้งคืนแบบเตือนใครไม่ได้)
+<p align="center"><b>English</b> · <a href="README.th.md">ภาษาไทย</a></p>
 
-## งานย้ายไป Rust
+A small Windows tray app that watches your game clients and alerts your phone the moment one disconnects, so you can leave characters logged in overnight and still sleep.
 
-เริ่ม prototype ระยะ 1 ใน [`rust/`](rust/README.md) สำหรับตรวจ Windows process/TCP และทดลองรับ frame จากหน้าต่างเกม
-ยังไม่ใช่ตัวเฝ้าหรือส่งเตือน และยังไม่ผ่านการทดสอบ Windows/เกมจริง ใช้ PowerShell ด้านล่างต่อไปในระหว่างย้าย
-ดูขอบเขตและเงื่อนไขผ่านใน [แผนย้าย](RUST-MIGRATION-PLAN.md)
+- Supported game: **Ragnarok Origin Classic** (`rooc.exe`). The main screen is a game library; watch several games at once
+- Checks every 30 seconds that each game client still holds its game-server connection
+- Alerts through the **ntfy** app, a **Discord** webhook or a **Telegram** bot, and repeats until the client is back
+- Never reads game memory, clicks anything or touches your account
+- Keeps watching from the system tray when you close the window
 
-## เริ่มใช้งาน
+Sound on the PC is off by default, since you are usually asleep in another room. The app refuses to start watching until at least one phone channel is set up, so you can't leave it running all night with nobody to alert.
 
-1. ลงแอป **ntfy** จาก Play Store / App Store
-2. เปิดแอป กด **+** แล้ว subscribe topic: `YOUR-TOPIC-HERE`
-3. ดับเบิลคลิก **`ROOC Monitor.vbs`** — หน้าจอจะเปิดขึ้นมา
-4. กดปุ่ม **ทดสอบเตือน** — มือถือต้องเด้ง ถ้าไม่เด้งอย่าเพิ่งไว้ใจ
-5. ปล่อยไว้ กดปิดหน้าต่างได้ มันจะย่อลง system tray แล้วเฝ้าต่อ
+<p align="center">
+  <img src="docs/library.png" width="49%" alt="GamePulse game library with alerts on and both clients online">
+  <img src="docs/game.png" width="49%" alt="Game page showing each client's connection and session time">
+</p>
 
-## ไฟล์ไหนใช้ทำอะไร
+## Getting started
 
-| ไฟล์ | ใช้ตอนไหน |
+1. Download `gamepulse-vX.Y.Z-windows-x64.zip` from [Releases](https://github.com/pawaretdev/game-pulse/releases/latest) and unzip it into a folder you will keep (for example `C:\Tools\GamePulse`). There is no installer.
+2. Double-click **`gamepulse.exe`**. No console window appears.
+   The first time, Windows may show "Windows protected your PC" because the file is not code-signed. Click **More info › Run anyway**.
+3. A **4-step setup** opens on first launch. It walks you through choosing an alert channel, sending a test alert to your phone, making your phone actually wake you up (Android and iPhone), and whether to open at Windows sign-in and start watching automatically.
+4. Before you sleep, run a drill at least once: **Settings › Test your setup › Run drill**. It proves the alerts **wake you up**, which is a different thing from them arriving.
+5. Leave it running. Closing the window hides it to the tray and it keeps watching.
+
+The **Guide** button on the main screen explains every status, when you get alerted, each setting, phone setup and troubleshooting. It also has **Run setup again**.
+
+Using ntfy: install the **ntfy** app from the Play Store or App Store, tap **+** and subscribe to the same topic you entered in the app. The setup screen has **Generate** (a hard-to-guess name) and **Copy** buttons.
+Keep the topic private. ntfy.sh is a public server and anyone who knows the topic can read your alerts. Alerts contain only a PID and times, no account data. To keep them fully private, self-host ntfy and enter it as `ntfy server`.
+
+## The main screen
+
+- The **library** shows one card per supported game with its live status on the cover (`2/2 ONLINE`, `1 DISCONNECTED`, `NOT RUNNING`). A card with a disconnect you are watching gets a red border.
+- The **Alerts on / off** switch on each card picks which games alert you. Turn on several to watch several games at once. The filter chips show All, only games with alerts on, or only running games.
+- Click a card to open that game: a header with the cover, status and alert switch, then one card per client. **Library** goes back.
+- The header shows the overall status (ALL ONLINE / 1 DISCONNECTED / GAME NOT RUNNING / PAUSED), internet status and the Start/Pause button.
+- Below it: when the last check ran and when the next one is due.
+- One card per client: ONLINE or disconnected, PID, server address, and how long the session has lasted or how long it has been down.
+  While a connection is missing but the grace checks haven't finished, the card shows `CONFIRMING 1/3` in amber.
+- **Events** lists drops and alert deliveries. A check result only appears when it changes; the log file records every check.
+- The footer shows your alert channels and when the next heartbeat is due.
+- Closing the window hides it to the tray. Left-click the tray icon to reopen it; right-click › **Exit** to quit.
+- Launching the exe again while it's running brings the existing window back. Only one copy runs at a time.
+
+### Settings
+
+| Section | What's in it |
 |---|---|
-| **`ROOC Monitor.vbs`** | ใช้ปกติ — เปิดหน้าจอ WPF ไม่มี console โผล่เลย |
-| `ROOC-Monitor-WPF.ps1` | ตัวหน้าจอหลัก เรียกผ่าน .vbs ข้างบน |
-| `ROOC-Monitor-GUI.ps1` | หน้าจอรุ่น WinForms เก็บไว้เผื่อ WPF มีปัญหา |
-| `Start-Watch.cmd` | ไม่มีหน้าจอ เอาไว้ให้ Task Scheduler เรียกตอนเปิดเครื่อง |
-| `Watch-RoocOnline.ps1` | ตัว command line เบื้องหลัง `Start-Watch.cmd` |
+| Appearance | Theme: Midnight (default), Night Watch, Poring, Frost, Mocha, Daylight. Previews live; Cancel reverts. |
+| Notifications | ntfy topic/server, Discord webhook, Telegram bot, `@here`, alarm sound on this PC |
+| Test your setup | **Test alert**, **Run drill**, **Test heartbeat**, **Capture desktop**. They use the values on screen, even before you press Save. |
+| Detection | Check interval, grace checks |
+| Wake-up alerts | Repeat interval, maximum repeats, notifications per alert, gap between them |
+| Heartbeat | Interval, optional desktop screenshot to Discord |
+| App | Open at Windows sign-in, start watching when the app opens |
 
-ทุกตัวใช้ตรรกะตรวจจับเดียวกัน ตัวมีหน้าจออ่านค่าจาก `config.json`
-ส่วนตัว command line รับค่าจาก argument ที่ส่งเข้าไป
+- **Test alert** sends one alert burst to every channel. It proves delivery works.
+- **Run drill** sends the same alerts as a real drop, 5 rounds spaced by `Repeat every`, marked `DRILL`. It proves the alerts wake you up. A drill keeps running after you close Settings and can be stopped from **Stop drill** on the main screen.
+- **Test heartbeat** sends a heartbeat now. With the screenshot option on, you can confirm the image reaches Discord.
+- **Capture desktop** saves a BMP to the `screenshots` folder and sends nothing.
 
-หน้าจอกับข้อความแจ้งเตือนเป็นภาษาอังกฤษทั้งหมด ส่วน comment ในโค้ดยังเป็นไทยไว้ให้อ่านง่ายตอนแก้
+**Game covers** are not bundled (the art belongs to the publishers). Every game gets a blank placeholder cover. To add your own, right-click a game card (or click the picture icon that appears on the cover) › **Choose cover image** and pick a PNG, JPG or WebP; portrait 3:4 looks best. The app keeps a copy in the `covers` folder next to it. **Remove cover** goes back to the placeholder.
 
-### หน้าจอมีอะไรบ้าง
+Settings are stored in `config.json` next to the exe, and the log is `gamepulse.log` in the same folder.
+`config.json` contains your webhook and tokens. Never share it or attach it when asking for help.
+(When you build from this repository, the app uses `config.json` at the repository root instead. That file is gitignored.)
 
-- การ์ดต่อหนึ่ง client บอก ONLINE/หลุด, PID, ปลายทางที่ต่ออยู่, ต่อเนื่องมานานแค่ไหน
-- แถบบนบอกว่าออนไลน์กี่ตัวจากทั้งหมด และอีกกี่วินาทีจะตรวจรอบถัดไป
-- ปุ่ม **ยิงทีเดียว** ส่งข้อความเดียวเข้ามือถือ พิสูจน์แค่ว่า "ส่งถึง"
-- ปุ่ม **ซ้อมหลุดจริง** ยิงชุดเดียวกับตอนหลุดจริง 5 ครั้ง ห่างกันตามค่า `RepeatAlertMin`
-  พิสูจน์ว่า "ปลุกติด" ซึ่งเป็นคนละเรื่องกัน กดปุ่มเดิมซ้ำเพื่อหยุดกลางคัน
-- ปุ่ม **ตั้งค่า** แก้ topic, ช่วงเวลาตรวจ, จังหวะเตือนซ้ำ ได้โดยไม่ต้องแตะไฟล์
-- ช่องเหตุการณ์ด้านล่างไล่ประวัติว่าหลุดตอนไหนบ้าง
-- ปิดหน้าต่างตอนกำลังเฝ้า = ย่อลง tray ไม่ใช่ปิดโปรแกรม (ออกจริงคลิกขวาที่ไอคอน tray)
+## How it detects a disconnect
 
-ชื่อ topic สุ่มมาให้แล้ว ห้ามบอกใคร เพราะ ntfy.sh เป็น server สาธารณะ ใครรู้ชื่อ topic ก็อ่านข้อความได้
-(ข้อความมีแค่ PID กับเวลา ไม่มีข้อมูล account) ถ้าอยากปิดสนิทจริงๆ ต้อง self-host ntfy เอง
-
-## สัญญาณที่ใช้
-
-`rooc.exe` เปิด TCP ค้างไว้กับ gate server ตลอดเวลาที่อยู่ในเกม:
+While you're in game, `rooc.exe` keeps a TCP connection open to the gate server:
 
 ```
-43.153.252.23:10011   <- client ที่ 1
-43.153.252.23:10012   <- client ที่ 2
+43.153.252.23:10011   <- client 1
+43.153.252.23:10012   <- client 2
 ```
 
-พอหลุด socket นั้นหายทันที ส่วน connection อื่น (443 ไป CDN, localhost ระหว่าง thread ในเกม)
-ยังอยู่เหมือนเดิม ตัว process ก็ยังไม่ตายและ window title ก็ไม่เปลี่ยน
-เพราะงั้น **การมี/ไม่มี socket ตัวนี้ คือตัวชี้สถานะออนไลน์ที่เชื่อถือได้ที่สุด**
-โดยไม่ต้องแตะ memory เกมหรือยุ่งกับ anti-cheat เลย
+When you drop, that socket disappears immediately. Other connections (443 to the CDN, localhost between game threads) stay, the process keeps running and the window title doesn't change.
+So **whether that socket exists is the most reliable online signal**, and reading it needs no access to game memory and nothing that could bother anti-cheat.
 
-สคริปต์นับ socket ที่ไม่ใช่ localhost และไม่ใช่พอร์ต 80/443/8080 — ไม่ผูกกับ IP หรือพอร์ตตายตัว
-ถ้าเกมย้ายเซิร์ฟก็ยังใช้ได้
+The app counts sockets that are Established, not localhost and not on port 80/443/8080. No IP or port is hard-coded, so it keeps working if the game moves servers. Each client is identified by PID plus process start time, so a reused PID is never mistaken for the same client.
 
-## เตือนเมื่อไหร่
+## When you get alerted
 
-| เหตุการณ์ | ความหมาย | ปลุกไหม |
+| Event | Meaning | Wakes you? |
 |---|---|---|
-| ไม่เจอ socket เกมติดกัน N รอบ | หลุดแล้ว ยังไม่กลับมา | ปลุก + เตือนซ้ำทุก 3 นาที |
-| ไม่มี process `rooc.exe` | เกมปิด/crash ไปเลย | ปลุก + เตือนซ้ำ |
-| ต่อเน็ตออกนอกไม่ได้ | เน็ตหลุด (socket ที่เห็นเป็นของค้าง เชื่อไม่ได้) | ปลุก + เตือนซ้ำ |
-| socket เกมมี CreationTime ใหม่ | หลุดแล้วเด้งกลับเองได้ | ไม่ปลุก แค่ให้เห็นตอนตื่น |
-| กลับมาออนไลน์ | หายห่วง | ไม่ปลุก |
+| No game socket for N checks in a row | Dropped and not back | Yes, repeated every 3 min |
+| No `rooc.exe` process | Game closed or crashed | Yes, repeated |
+| One client disappears | That client was closed | Yes |
+| No internet from this PC | Internet down (remaining sockets can't be trusted) | Yes, repeated |
+| Game socket has a new creation time | Dropped and reconnected on its own | No, just shows when you wake up |
+| Back online / internet back | All good | No |
 
-หน่วงด้วย `-GraceChecks` เพื่อไม่ให้เตือนผิดตอนสลับแมพหรือเปลี่ยนตัวละคร
-ค่าเริ่มต้น 3 รอบ × 30 วินาที = ต้องหลุดจริง 90 วินาทีถึงจะปลุก
+**Grace checks** delay the alert so map changes and character switches don't trigger false alarms. The default is 3 checks × 30 seconds, so a real drop must last about 90 seconds before you're woken.
 
-**เตือนซ้ำ** (`-RepeatAlertMin`) คือหัวใจของการปลุกให้ติด ยิงซ้ำเรื่อยๆ จนกว่าจะกลับมาออนไลน์
-หรือครบ `-MaxRepeats` ครั้ง ดีกว่าไปหวังพึ่ง vibration pattern ของแอปใดแอปหนึ่ง
+**Repeat** (`Repeat every`) is what actually wakes you: alerts keep firing until the client is back or `Maximum repeats` is reached. That works better than relying on any one app's vibration pattern.
 
-**Heartbeat** (`-HeartbeatHours`) ส่ง "ยังเฝ้าอยู่" ทุก 4 ชม. เพื่อให้แยกออกว่า
-ที่เงียบทั้งคืนเป็นเพราะทุกอย่างปกติ หรือเพราะ monitor ตายไปตั้งแต่ตีสอง
+**Heartbeat** (every 4 hours by default) sends "Still watching", so a silent night means everything was fine and not that the monitor died at 2 a.m.
+With **Attach a desktop screenshot** on, each heartbeat to Discord includes a WebP image of all monitors. It shows everything on screen, so it's off by default.
 
-## คำสั่ง
+Monitoring runs on a background thread separate from the window, so it keeps checking and alerting while hidden in the tray.
+
+## Open automatically at Windows sign-in
+
+Settings › App › tick **Open GamePulse when I sign in to Windows**, then Save.
+This writes to `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`, so it needs no admin rights and no Task Scheduler.
+Upgrading from ROOC Monitor: if you had the old sign-in launch on, GamePulse moves it to itself the first time it opens.
+Also tick **Start watching when the app opens**, or the app will open but not watch.
+If you move the exe or update into a different folder, untick and tick it again to save the new path.
+
+More important than the app: set Windows **Power & sleep** to **Never**. Otherwise the PC sleeps and the game and monitor stop together, which may be why you were dropping overnight in the first place.
+
+## Updating
+
+1. Right-click the tray icon › **Exit**. Clicking X only hides the window and the exe stays locked.
+2. Unzip the new version over the old `.exe` files in the same folder. `config.json` is left alone, so your settings stay.
+
+## Uninstalling
+
+There is no uninstaller. The app only writes to its own folder and one sign-in value in the registry.
+
+1. If **Open GamePulse when I sign in to Windows** is ticked, untick it and Save first. Otherwise Windows keeps trying to open a missing file at every sign-in.
+2. Right-click the tray icon › **Exit**.
+3. Delete the folder. That removes the exe, `config.json` (your webhook and tokens), `gamepulse.log` and any `screenshots`.
+
+## Why does my phone only buzz once?
+
+A phone vibrates once per notification. How long it vibrates is decided by the OS notification channel, and the sender can't change it, not even with `Priority: urgent`.
+
+The fix is to **send several in a row**, set in Settings › Wake-up alerts:
+
+| Setting | Meaning |
+|---|---|
+| Notifications per alert (`BurstCount`) | 1 = one buzz, 4 = four buzzes. Default 4. |
+| Gap between them (`BurstGapSec`) | Default 4. Under 3 seconds, Android may merge the later ones. |
+
+So each drop sends `BurstCount` notifications, and the whole burst repeats every `Repeat every` minutes until the client is back or `Maximum repeats` is reached.
+
+**With `BurstCount` set to 1 this doesn't work at all.** Settings shows an amber warning when it's 1.
+
+## Which channels support urgent alerts
+
+| Channel | Priority support |
+|---|---|
+| ntfy | Sends `Priority: urgent` (level 5). **Only has an effect on Android.** |
+| Discord webhook | No priority, but real drops include `@here` |
+| Telegram bot | Sound on/off only, no urgency level |
+
+Discord only adds `@here` to urgent alerts. Recoveries and heartbeats don't ping.
+Turn it off in Settings › Notifications (`"DiscordHere": false` in `config.json`).
+
+### What Discord messages look like
+
+Alerts are embeds, and the color bar tells you the event type at a glance:
+
+| Color | Event |
+|---|---|
+| 🔴 Red | Disconnected / game closed / internet down |
+| 🟢 Green | Back online / internet back |
+| 🟡 Yellow | Reconnected on its own / drill |
+| 🔵 Blue | Heartbeat and test messages |
+
+Fields show the PID, how long it has been down and which repeat this is. The footer shows the notification's place in the burst (for example `alert 2 of 4`), so you can tell whether the burst finished.
+
+## iPhone setup
+
+iOS has **no notification channels** like Android, so the Android importance advice doesn't apply, and ntfy's `Priority: urgent` has almost no effect on iOS.
+
+iOS vibrates once per notification; you can't lengthen or repeat it within one notification. **`BurstCount` is the only control you have**: raise it for more buzzes.
+
+On the phone:
+
+1. Settings › Notifications › **ntfy**: turn on Allow Notifications and Sounds, set Banner Style to **Persistent**.
+2. Settings › Focus › **Sleep** (or whichever Focus runs at night) › Apps: allow **ntfy** and **Discord**.
+   This matters most. Without it, Focus silences everything.
+3. If ntfy offers **Time Sensitive Notifications**, turn it on.
+4. Make sure the Silent switch is off, and turn off Low Power Mode at night.
+
+If it still doesn't wake you, the only guaranteed option on iOS is a **phone call**. ntfy.sh offers calls on a paid plan; decide whether that's worth the monthly cost.
+
+## Android setup
+
+1. ntfy › tap your topic › **Notification settings** › turn on **Dedicated channel**.
+2. Open that channel: Importance = **Urgent**, vibration on, pick a loud sound.
+3. Settings › Sound & vibration › Do Not Disturb › **Apps**: allow ntfy through DND.
+4. Settings › Apps › ntfy › Battery › **Unrestricted**, or Android delays notifications at night.
+
+Steps 3 and 4 matter most. Without them you won't wake up.
+
+## Command line
+
+`gamepulse-cli.exe` (in the same zip) is separate from the GUI. It checks once or tests screen capture; it never watches or sends alerts:
 
 ```powershell
-# เช็คสถานะตอนนี้ครั้งเดียว (exit 0 = ออนไลน์ครบ, 1 = มีตัวหลุด, 2 = ไม่มี rooc.exe)
-.\Watch-RoocOnline.ps1 -Once
-
-# ทดสอบว่ามือถือได้รับจริง
-.\Watch-RoocOnline.ps1 -NtfyTopic "YOUR-TOPIC-HERE" -TestAlert
-
-# เฝ้าจริง
-.\Watch-RoocOnline.ps1 -NtfyTopic "YOUR-TOPIC-HERE" -HeartbeatHours 4
+.\gamepulse-cli.exe --once      # JSON snapshot; exit 0 all online, 1 some dropped, 2 no supported game running, 3 incomplete read
+.\gamepulse-cli.exe --capture   # capture the desktop and report metadata without writing a file
+.\gamepulse-cli.exe --help
 ```
 
-### ช่องทางเตือน (ใส่พร้อมกันหลายอันได้ เผื่ออันใดอันหนึ่งล่ม)
+Building from source, tests, exit codes and how to publish a release are in [DEVELOPMENT.md](DEVELOPMENT.md).
 
-| ตัวเลือก | หมายเหตุ |
-|---|---|
-| `-NtfyTopic` | ง่ายสุด ไม่ต้องสมัคร แนะนำอันนี้ |
-| `-NtfyServer` | ถ้า self-host เอง (ค่าเริ่มต้น `https://ntfy.sh`) |
-| `-WebhookUrl` | Discord webhook หรือ endpoint ที่รับ JSON `{"content": "..."}` |
-| `-TelegramToken` + `-TelegramChatId` | Telegram bot |
+## Limitations
 
-### ตัวเลือกอื่น
+It can only tell whether **the socket still exists**, not whether your character is still moving.
+It can't tell "kicked out" from "stuck at the login screen"; both show as disconnected, which for this purpose is the same thing.
 
-| ตัวเลือก | ค่าเริ่มต้น | ความหมาย |
-|---|---|---|
-| `-IntervalSec` | 30 | เช็คทุกกี่วินาที |
-| `-GraceChecks` | 3 | ไม่เจอ socket กี่รอบติดถึงเตือน |
-| `-RepeatAlertMin` | 3 | ยังหลุดอยู่ให้เตือนซ้ำทุกกี่นาที (0 = ไม่ซ้ำ) |
-| `-MaxRepeats` | 20 | เตือนซ้ำมากสุดกี่ครั้งต่อการหลุดหนึ่งครั้ง |
-| `-HeartbeatHours` | 0 | ส่ง "ยังเฝ้าอยู่" ทุกกี่ชม. (0 = ปิด) |
-| `-Sound` | ปิด | เปิดเสียงที่เครื่องนี้ด้วย |
-| `-TestAlert` | — | ยิงข้อความทดสอบแล้วจบ |
-| `-Once` | — | เช็คครั้งเดียวแล้วจบ |
-| `-LogOnly` | — | ยอมรันทั้งที่ไม่มีช่องทางเตือน |
-| `-LogPath` | `rooc-online.log` | ที่เก็บ log |
+Comparing the API results against `Get-NetTCPConnection` on a real machine, and checking capture in every situation (multiple monitors, lock screen, sleep), isn't finished yet. The open items are listed in [DEVELOPMENT.md](DEVELOPMENT.md#open-gates).
 
-## ตั้งให้รันเองตอนเปิดเครื่อง
+## License
 
-Task Scheduler > Create Task
+[MIT](LICENSE) © 2026 pawaretdev.
 
-- General: **Run whether user is logged on or not** + **Run with highest privileges**
-- Triggers: At log on
-- Actions: Program `powershell.exe`, Arguments:
-  ```
-  -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File "C:\Users\pawar\ROOC-Monitor\Watch-RoocOnline.ps1" -NtfyTopic "YOUR-TOPIC-HERE" -HeartbeatHours 4
-  ```
-- Conditions: เอาติ๊ก **Stop if the computer switches to battery power** ออก
-- Settings: เอาติ๊ก **Stop the task if it runs longer than** ออก
+Bundled fonts are licensed under the [SIL Open Font License 1.1](https://openfontlicense.org): [Inter](https://github.com/rsms/inter) ([license](assets/fonts/Inter-OFL.txt)), [JetBrains Mono](https://github.com/JetBrains/JetBrainsMono) ([license](assets/fonts/JetBrainsMono-OFL.txt)) and [Fredoka](https://github.com/hafontia/Fredoka-One) ([license](assets/fonts/Fredoka-OFL.txt)). The release zip includes these license files in `fonts/`.
 
-สำคัญกว่าตัวสคริปต์: ไปตั้ง Power Options ให้ **Sleep = Never** ด้วย
-ไม่งั้นเครื่องหลับแล้วทั้งเกมทั้ง monitor ก็ตายตามกัน ซึ่งอาจเป็นต้นเหตุที่หลุดตอนนอนตั้งแต่แรก
-
-## ทำไมมือถือสั่นแค่ทีเดียว
-
-มือถือสั่นหนึ่งครั้งต่อ notification หนึ่งใบ ความยาวการสั่นเป็นของ notification channel ฝั่ง OS
-สั่งจากฝั่งเราไม่ได้ ต่อให้ส่ง `Priority: urgent` ไปก็ตาม
-
-ทางแก้คือ **ยิงหลายใบติดกัน** ตั้งได้ในหน้าตั้งค่า
-
-| ค่า | ความหมาย |
-|---|---|
-| หนึ่งรอบยิงกี่ใบ (`BurstCount`) | 1 = สั่นทีเดียว, 4 = สั่นสี่ที ค่าเริ่มต้น 4 |
-| ใบห่างกันกี่วินาที (`BurstGapSec`) | ค่าเริ่มต้น 4 — ต่ำกว่า 3 วิ Android อาจกลืนใบหลังๆ |
-
-เท่ากับหนึ่งครั้งที่หลุดจะได้ `BurstCount` ใบ แล้วทั้งชุดวนซ้ำทุก `RepeatAlertMin` นาที
-จนกว่าจะกลับมาออนไลน์หรือครบ `MaxRepeats`
-
-**ถ้าตั้ง `BurstCount` เป็น 1 ฟีเจอร์นี้จะไม่ทำงานเลย** เจอบ่อยเวลาเผลอแก้
-
-## urgent ทำงานกับช่องทางไหนบ้าง
-
-| ช่องทาง | รองรับ priority ไหม |
-|---|---|
-| ntfy | ส่ง `Priority: urgent` (ระดับ 5) — **มีผลเฉพาะบน Android** |
-| Discord webhook | ไม่มี priority แต่ใส่ `@here` ให้ตอนหลุดจริงแล้ว |
-| Telegram bot | ได้แค่เปิด/ปิดเสียง ไม่มีระดับความด่วน |
-
-Discord จะขึ้น `@here` เฉพาะตอนหลุดจริงเท่านั้น ข่าวดีกับ heartbeat ไม่ ping
-ปิดได้ด้วยการตั้ง `"DiscordHere": false` ใน `config.json`
-(ตัว command line ใช้ `-NoDiscordHere`)
-
-### หน้าตาข้อความใน Discord
-
-ส่งเป็น embed ไม่ใช่ข้อความเปล่า สีแถบข้างบอกชนิดเหตุการณ์ได้ทันทีโดยไม่ต้องอ่าน
-
-| สี | เหตุการณ์ |
-|---|---|
-| 🔴 แดง | หลุด / เกมปิด / เน็ตหลุด |
-| 🟢 เขียว | กลับมาออนไลน์ / เน็ตกลับมา |
-| 🟡 เหลือง | เด้งกลับเองได้ / โหมดซ้อม |
-| 🔵 ฟ้า | heartbeat กับข้อความทดสอบ |
-
-ในตัว embed มี field บอก PID, หลุดมานานเท่าไหร่, หลุดตั้งแต่กี่โมง และเป็นการเตือนซ้ำครั้งที่เท่าไหร่
-ส่วน footer บอกว่าเป็นใบที่เท่าไหร่ของชุด (เช่น `alert 2 of 4`) จะได้รู้ว่าชุดยังยิงไม่ครบ
-
-## บน iOS ต้องทำยังไง
-
-iOS **ไม่มี notification channel** เหมือน Android เพราะงั้นคำแนะนำแนวตั้ง importance ของ channel
-ใช้ไม่ได้ทั้งหมด และ `Priority: urgent` ที่ ntfy ส่งไปแทบไม่มีผลบน iOS
-
-iOS สั่นหนึ่งครั้งต่อ notification หนึ่งใบ จบ ยืดไม่ได้ ทำซ้ำในใบเดียวไม่ได้
-เพราะงั้น **`BurstCount` คือกลไกเดียวที่ควบคุมได้** อยากสั่นรัวขึ้นก็เพิ่มจำนวนใบ
-
-สิ่งที่ควรตั้งบนเครื่อง:
-
-1. Settings > Notifications > **ntfy** — เปิด Allow Notifications, Sounds, และตั้ง Banner Style เป็น **Persistent**
-2. Settings > Focus > **Sleep** (หรือ Focus ที่เปิดตอนนอน) > Apps > อนุญาต **ntfy** และ **Discord**
-   ข้อนี้สำคัญที่สุด ถ้าไม่ทำ Focus จะกลืนทุกอย่างเงียบสนิท
-3. ถ้าในหน้า Notifications ของ ntfy มีตัวเลือก **Time Sensitive Notifications** ให้เปิดด้วย
-4. เช็คว่าไม่ได้เปิด Silent switch ค้างไว้ และปิด Low Power Mode ตอนกลางคืน
-
-ถ้าทำครบแล้วยังไม่ตื่น เหลือทางเดียวที่การันตีได้จริงบน iOS คือให้มัน**โทรเข้า**
-ntfy.sh มีฟีเจอร์โทรในแพ็กเกจเสียเงิน ต้องชั่งน้ำหนักเอาว่าคุ้มกับค่ารายเดือนไหม
-
-## ตั้งฝั่งมือถือให้ปลุกติด (Android)
-
-1. ntfy > กด topic > **Notification settings** > เปิด **Dedicated channel**
-2. เข้า channel นั้น ตั้ง Importance = **Urgent**, เปิด Vibration, เลือกเสียงที่ดัง
-3. Settings > Sound & vibration > Do Not Disturb > **Apps** > อนุญาต ntfy ให้ผ่าน DND
-4. Settings > Apps > ntfy > Battery > **Unrestricted** (ไม่งั้น Android จะหน่วง notification ตอนดึก)
-
-ข้อ 3 กับ 4 สำคัญมาก ถ้าไม่ทำ ยังไงก็ไม่ตื่น
-
-## ถ้าจะแก้ตัว launcher
-
-`ROOC Monitor.vbs` ต้องเปิดด้วย `sh.Run(..., 0, False)` คือ **ซ่อน** เพื่อไม่ให้มีหน้าต่าง console โผล่
-
-ผลข้างเคียงคือ `nCmdShow = 0` จะไปกดหน้าต่าง WPF **ทุกบาน** ไม่ใช่แค่บานแรก
-ทั้งหน้าหลักและหน้าตั้งค่าจะถูกสร้างแบบซ่อน อาการคือกดปุ่มตั้งค่าแล้วเหมือนแอปค้าง
-ตัวสคริปต์แก้ด้วยฟังก์ชัน `Force-Show` ที่สั่ง `SW_RESTORE` หลัง dispatcher เริ่มเดิน
-เรียกก่อน `ShowDialog` ของทุกหน้าต่าง — **ถ้าเพิ่มหน้าต่างใหม่ ต้องเรียก `Force-Show` ด้วย**
-
-อย่าเปลี่ยนไปใช้วิธี "เปิดปกติแล้วให้สคริปต์ซ่อน console เอง" เคยลองแล้ว
-กว่า `Add-Type` จะ compile เสร็จ console ค้างให้เห็นหลายวินาที น่ารำคาญกว่าเดิม
-
-และ **ห้ามเซฟ .vbs เป็น UTF-8 BOM** VBScript จะ compile ไม่ผ่านทันที
-โดยที่ `wscript` ล้มเงียบสนิท ไม่มี error อะไรเลย เช็คด้วย `cscript //nologo "ROOC Monitor.vbs"`
-ถ้าจะใส่ comment ภาษาไทยต้องเซฟเป็น ANSI
-
-## ข้อจำกัด
-
-บอกได้แค่ว่า **socket ยังอยู่ไหม** ไม่ได้บอกว่าตัวละครยังขยับอยู่จริง
-และแยกไม่ออกระหว่าง "โดนเตะออก" กับ "ค้างอยู่หน้า login" — ทั้งคู่ขึ้นว่าหลุดเหมือนกัน
-ซึ่งสำหรับงานนี้ก็ถือว่าเป็นเรื่องเดียวกันอยู่แล้ว
+Ragnarok Origin is a trademark of its respective owners; this project is not affiliated with or endorsed by them.

@@ -1,5 +1,13 @@
+# build output
+/target/
+
 # secrets / local state
 config.json
 *.log
-Start-Watch.cmd
-Test-Alert.cmd
+screenshots/
+# User-supplied game covers (publisher-copyrighted art, never commit)
+/covers/
+/evidence/
+
+# local AI assistant notes
+CLAUDE.md
