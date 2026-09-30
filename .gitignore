@@ -1,0 +1,5 @@
+# secrets / local state
+config.json
+*.log
+Start-Watch.cmd
+Test-Alert.cmd
